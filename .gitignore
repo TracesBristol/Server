@@ -57,3 +57,12 @@ typings/
 # dotenv environment variables file
 .env
 
+# python files
+.pyc
+
+# output files
+.out
+
+# serverside files
+cleanTweets.txt
+streaming_out*.txt
