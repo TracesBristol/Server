@@ -1,0 +1,118 @@
+#!/bin/bash
+pythonExists=0
+pythonError=0
+unsupportedIndex=0
+tweetIndex=0
+
+cleanFolder()
+{
+    if [ ! -f cleanTweets.txt ]
+    then
+        rm cleanTweets.txt
+    fi
+
+    if [ ! -f python.out ]
+    then
+        rm python.out
+    fi
+
+    find . -name "*.pyc" -type f -delete
+    find . -name "streaming_out*.txt" -type f -delete
+}
+
+moveUnsupported()
+{
+    index=$unsupportedIndex
+    for file in ./tweets/*
+    do
+        mv "$file" ./unsupported/$(printf "unsupportedTweet%0.5d.json" $index)
+        index=$((index + 1))
+    done
+    echo $index
+}
+
+restart()
+{
+    # Update keywords
+    mongoexport --port 3000 -u "ventisMeteor" -p "V3NT1SD3M0" --authenticationDatabase "meteor" -d meteor -c keywords --jsonArray -o keywords.json;
+
+    # Upload tweets
+    node index.js
+
+    # Remove extra files
+    cleanFolder
+
+    # Move Unsupported Tweets if tweets folder contains tweets
+    if [ "$(ls -A ./tweets)" ]
+    then
+        unsupportedIndex=$(moveUnsupported)
+    fi
+
+    # Restart Python
+    nohup python twitter_streaming.py > python.out 2>&1 &
+
+    echo $unsupportedIndex
+}
+
+while true
+do
+    PYTHONPID=$(pidof python)
+    currentTime=`date +"%H%M%S"`
+    currentSeconds=`date +"%-S"`
+    currentMinutes=`date +"%-M"`
+
+    # Check if Python is running
+    if [ ${PYTHONPID:+1} ]
+    then
+        pythonExists=1
+    else
+        pythonExists=0
+    fi
+
+    # Check if Python script produced errors
+    if [ -s python.out ]
+    then
+        pythonError=1
+    else
+        pythonError=0
+    fi
+
+    if [ $currentMinutes == 00 ]
+    then
+	# Kill python
+    	if [ $pythonExists = 1 ]
+    	then
+            /usr/bin/kill $PYTHONPID;
+    	fi
+
+        # restart python script
+        unsupportedIndex=$(restart)
+        # echo "Restart complete"
+    elif [ $pythonError = 1 ] || [ $pythonExists = 0 ]
+    then
+	# Kill python
+    	if [ $pythonExists = 1 ]
+    	then
+        	/usr/bin/kill $PYTHONPID;
+    	fi
+
+        # restart python script
+        unsupportedIndex=$(restart)
+        # echo "Restart complete"
+    fi
+
+    currentSeconds=`date +"%-S"`
+    currentMinutes=`date +"%-M"`
+
+    minsTillHour=$((60 - $currentMinutes))
+    secsTillHour=$(($minsTillHour * 60))
+    seconds=$((60 - $currentSeconds))
+    secsTillHour=$(($secsTillHour + $seconds))
+    if [ $secsTillHour -lt 3600 ]
+    then
+        sleepTime=$secsTillHour
+    else
+        sleepTime="3600"
+    fi
+    sleep $sleepTime
+done

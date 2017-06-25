@@ -1,0 +1,4 @@
+### VENTIS Python Requirements
+tweepy
+textblob
+stop-words
